@@ -2,7 +2,7 @@ use std::vec;
 
 use fancy_regex::Regex;
 
-const EXP: &str =r"^(\d+)(\1)$";
+const EXP_PART1: &str =r"^(\d+)(\1)$";
 
 trait DigitCount {
     /// Cuenta cuántos dígitos tiene el número en cuestión.
@@ -20,14 +20,14 @@ impl DigitCount for usize  {
     }
 }
 
-fn find_invalid_numbers((start, end): (usize, usize), regex: &Regex) -> Vec<usize> {
+fn find_invalid_numbers_part_1((start, end): (usize, usize), regex: &Regex) -> Vec<usize> {
     // O(n)
     (start..=end)
         .filter(|n| regex.is_match(&n.to_string()).unwrap_or(false))
         .collect()
 }
 
-fn find_invalid_numbers_optimized((start, end): (usize, usize)) -> Vec<usize> {
+fn find_invalid_numbers_part_1_optimized((start, end): (usize, usize)) -> Vec<usize> {
     // Siempre tenemos que arrancar en positivo, aunque en el
     // ejercicio es irrelevante
     let start = if start == 0 { 1 } else { start };
@@ -49,13 +49,13 @@ fn find_invalid_numbers_optimized((start, end): (usize, usize)) -> Vec<usize> {
 
         // El inicio será el primer número siguiente de dígitos pares
         let start = 10_usize.pow(start_digit_count);
-        return find_invalid_numbers_optimized((start, end));
+        return find_invalid_numbers_part_1_optimized((start, end));
     }
 
     if end_digit_count & 0b1 == 1 {
         // El final nuevo será el último número de digitos pares anterior
         let end = 10_usize.pow(end_digit_count - 1) - 1; // 100 -> 99
-        return find_invalid_numbers_optimized((start, end));
+        return find_invalid_numbers_part_1_optimized((start, end));
     }
 
     let half_digit_count = start_digit_count >> 1; // start_digit_count / 2;
@@ -102,20 +102,20 @@ fn parse_range(range: &str) -> (usize, usize) {
     (first, second)
 }
 
-fn run_day2(line: &str) -> usize {
-    let regex = Regex::new(EXP).unwrap();
+fn run_day2_part_1(line: &str) -> usize {
+    let regex = Regex::new(EXP_PART1).unwrap();
 
     line.split(',')
         .map(|r| parse_range(r))
-        .map(|r| find_invalid_numbers(r, &regex))
+        .map(|r| find_invalid_numbers_part_1(r, &regex))
         .flatten()
         .sum()
 }
 
-fn run_day2_optimized(line: &str) -> usize {
+fn run_day2_part_1_optimized(line: &str) -> usize {
     line.split(',')
         .map(|r| parse_range(r))
-        .map(|r| find_invalid_numbers_optimized(r))
+        .map(|r| find_invalid_numbers_part_1_optimized(r))
         .flatten()
         .sum()
 }
@@ -123,10 +123,10 @@ fn run_day2_optimized(line: &str) -> usize {
 fn main() {
     let my_exercise_input = "197-407,262128-339499,557930-573266,25-57,92856246-93001520,2-12,1919108745-1919268183,48414903-48538379,38342224-38444598,483824-534754,1056-1771,4603696-4688732,75712519-75792205,20124-44038,714164-782292,4429019-4570680,9648251-9913729,6812551522-6812585188,58-134,881574-897488,648613-673853,5261723647-5261785283,60035-128980,9944818-10047126,857821365-857927915,206885-246173,1922-9652,424942-446151,408-1000";
 
-    let result = run_day2(my_exercise_input);
+    let result = run_day2_part_1(my_exercise_input);
     println!("Parte 1: {result}");
 
-    let result_optimized = run_day2_optimized(my_exercise_input);
+    let result_optimized = run_day2_part_1_optimized(my_exercise_input);
     println!("Parte 1, optimizado: {result_optimized}");
 }
 
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn regex_test() {
-        let regex = Regex::new(EXP).unwrap();
+        let regex = Regex::new(EXP_PART1).unwrap();
 
         assert!(regex.is_match("11").unwrap_or(false));
         assert!(regex.is_match("5252").unwrap_or(false));
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn exercise_example_test() {
-        assert_eq!(run_day2(EXERCISE_EXAMPLE), 1227775554);
+        assert_eq!(run_day2_part_1(EXERCISE_EXAMPLE), 1227775554);
     }
 
     #[test]
