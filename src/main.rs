@@ -1,112 +1,166 @@
-use std::fs;
+use std::vec;
 
-const DIAL_SIZE: isize = 100;
+use fancy_regex::Regex;
 
-#[derive(Debug)]
-pub struct Dial {
-    cursor: isize, // debería ser usize
-    zero_counts: usize,
-    clicks_on_zero: usize,
+const EXP: &str =r"^(\d+)(\1)$";
+
+trait DigitCount {
+    /// Cuenta cuántos dígitos tiene el número en cuestión.
+    /// No devuelve nunca 0
+    fn digits(&self) -> u32;
 }
 
-impl Dial {
-    pub fn new() -> Self {
-        Dial { cursor: 50, clicks_on_zero: 0, zero_counts: 0 }
-    }
-
-    pub fn move_steps(&mut self, steps: isize) {
-        if steps == 0 {
-            return;
-        }
-
-        // Quitamos las rotaciones completas
-        self.clicks_on_zero += (steps / DIAL_SIZE).abs() as usize;
-
-        // Pasos que quedan después de las rotaciones completas
-        let steps = steps % DIAL_SIZE;
-
-        // tremenda función la de signum
-        let min_clicks_to_zero = match steps.signum() {
-            1 => DIAL_SIZE - self.cursor,
-            -1 => self.cursor,
-            _ => return, // esto es la ostia porque sale de la función, y los clicks ya los hemos hecho arriba
-            // la movida es: si el cursor está en 0 y hacemos 10 vueltas completas, por ejemplo, debería pasar
-            // 10 veces por 0 y subar 1 a zero_counts?
-        };
-
-        // Si estamos en 0, necesitamos una rotación entera hasta 0, no 0 clicks
-        let min_clicks_to_zero = if min_clicks_to_zero == 0 { DIAL_SIZE } else { min_clicks_to_zero };
-        if steps.abs() >= min_clicks_to_zero {
-            self.clicks_on_zero += 1;
-        }
-
-        // puede dar negativo
-        let current = self.cursor + steps;
-
-        // Si el resto es negativo, encuentra su congruente positivo
-        // a === b (mod DIAL_SIZE), siendo a current
-        self.cursor = current.rem_euclid(DIAL_SIZE);
-
-        if self.cursor == 0 {
-            self.zero_counts += 1;
+impl DigitCount for usize  {
+    fn digits(&self) -> u32 {
+        if *self == 0 {
+            1
+        } else {
+            self.ilog10() + 1
         }
     }
 }
 
-fn parse(line: &str) -> isize {
-    let line = line.trim();
-    if line.len() < 2 {
-        return 0;
+fn find_invalid_numbers((start, end): (usize, usize), regex: &Regex) -> Vec<usize> {
+    // O(n)
+    (start..=end)
+        .filter(|n| regex.is_match(&n.to_string()).unwrap_or(false))
+        .collect()
+}
+
+fn find_invalid_numbers_optimized((start, end): (usize, usize)) -> Vec<usize> {
+    // Siempre tenemos que arrancar en positivo, aunque en el
+    // ejercicio es irrelevante
+    let start = if start == 0 { 1 } else { start };
+
+    // El inicio no puede ser mayor que el final
+    if start > end {
+        return vec![];
     }
 
-    let (direction, number) = line.split_at(1);
+    let start_digit_count = start.digits();
+    let end_digit_count = end.digits();
 
-    let sign = match direction {
-        "L" => -1,
-        "R" => 1,
-        _ => panic!("{line}????"),
-    };
+    if start_digit_count & 0b1 == 1 {
+        if start_digit_count == end_digit_count {
+            // Si ambas longitudes son impares y encima las mismas,
+            // no habrá ningún número que cumpla los criterios entre ellos.
+            return vec![];
+        }
 
-    number.parse::<isize>().unwrap() * sign
+        // El inicio será el primer número siguiente de dígitos pares
+        let start = 10_usize.pow(start_digit_count);
+        return find_invalid_numbers_optimized((start, end));
+    }
+
+    if end_digit_count & 0b1 == 1 {
+        // El final nuevo será el último número de digitos pares anterior
+        let end = 10_usize.pow(end_digit_count - 1) - 1; // 100 -> 99
+        return find_invalid_numbers_optimized((start, end));
+    }
+
+    let half_digit_count = start_digit_count >> 1; // start_digit_count / 2;
+    let step = 10_usize.pow(half_digit_count);
+
+    let mut numbers = vec![];
+    let mut num = start;
+
+    while num <= end {
+        // Separamos el número en dos partes para comprobar el criterio: que ambas
+        // partes sean iguales
+        let first_half = num / step;
+        let second_half = num - first_half * step;
+
+        if second_half == first_half {
+            numbers.push(num);
+        } else if second_half < first_half {
+            // Si la segunda mitad es menor, podemos saltar directamente al número
+            // que buscamos, entonces a la segunda mitad le sumamos la diferencia con
+            // la primera mitad.
+            // No meto el número al array por si, por lo que sea, este "nuevo" número
+            // es mayor que el final
+            num += first_half - second_half;
+            continue;
+        }
+
+        // Aumentamos lo suficiente hasta el próximo número que cumpla los criterios
+        num += step - second_half + first_half;
+    }
+
+    numbers
+}
+
+fn parse_range(range: &str) -> (usize, usize) {
+    let parsed: Vec<&str> = range.split('-').collect();
+
+    if parsed.len() != 2 {
+        panic!("Rango no válido: {range}");
+    }
+
+    let first: usize = parsed[0].parse().unwrap();
+    let second: usize = parsed[1].parse().unwrap();
+
+    (first, second)
+}
+
+fn run_day2(line: &str) -> usize {
+    let regex = Regex::new(EXP).unwrap();
+
+    line.split(',')
+        .map(|r| parse_range(r))
+        .map(|r| find_invalid_numbers(r, &regex))
+        .flatten()
+        .sum()
+}
+
+fn run_day2_optimized(line: &str) -> usize {
+    line.split(',')
+        .map(|r| parse_range(r))
+        .map(|r| find_invalid_numbers_optimized(r))
+        .flatten()
+        .sum()
 }
 
 fn main() {
-    let input = fs::read_to_string("./inputs/day_1.txt").unwrap();
+    let my_exercise_input = "197-407,262128-339499,557930-573266,25-57,92856246-93001520,2-12,1919108745-1919268183,48414903-48538379,38342224-38444598,483824-534754,1056-1771,4603696-4688732,75712519-75792205,20124-44038,714164-782292,4429019-4570680,9648251-9913729,6812551522-6812585188,58-134,881574-897488,648613-673853,5261723647-5261785283,60035-128980,9944818-10047126,857821365-857927915,206885-246173,1922-9652,424942-446151,408-1000";
 
-    let mut day1 = Dial::new();
-    for line in input.lines() {
-        day1.move_steps(parse(line));
-    }
+    let result = run_day2(my_exercise_input);
+    println!("Parte 1: {result}");
 
-    println!("Parte 1: {}", day1.zero_counts);
-    println!("Parte 2: {}", day1.clicks_on_zero);
+    let result_optimized = run_day2_optimized(my_exercise_input);
+    println!("Parte 1, optimizado: {result_optimized}");
 }
 
 #[cfg(test)]
 mod tests {
+    use fancy_regex::Regex;
+
     use super::*;
 
-    const EXERCISE_EXAMPLE: &str = "L68\nL30\nR48\nL5\nR60\nL55\nL1\nL99\nR14\nL82";
+    const EXERCISE_EXAMPLE: &str = "11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124";
+    // const EXERCISE_EXAMPLE: &str = "197-407,262128-339499,557930-573266,25-57,92856246-93001520,2-12,1919108745-1919268183,48414903-48538379,38342224-38444598,483824-534754,1056-1771,4603696-4688732,75712519-75792205,20124-44038,714164-782292,4429019-4570680,9648251-9913729,6812551522-6812585188,58-134,881574-897488,648613-673853,5261723647-5261785283,60035-128980,9944818-10047126,857821365-857927915,206885-246173,1922-9652,424942-446151,408-1000";
 
     #[test]
-    fn example() {
-        let mut day1 = Dial::new();
+    fn regex_test() {
+        let regex = Regex::new(EXP).unwrap();
 
-        for line in EXERCISE_EXAMPLE.lines() {
-            day1.move_steps(parse(line));
-        }
-
-        assert_eq!(day1.zero_counts, 3);
-        assert_eq!(day1.clicks_on_zero, 6);
+        assert!(regex.is_match("11").unwrap_or(false));
+        assert!(regex.is_match("5252").unwrap_or(false));
+        assert!(!regex.is_match("112211").unwrap_or(false));
+        assert!(!regex.is_match("100").unwrap_or(false));
+        assert!(!regex.is_match("112").unwrap_or(false));
     }
 
     #[test]
-    fn full_rotations() {
-        let mut dial = Dial::new();
+    fn exercise_example_test() {
+        assert_eq!(run_day2(EXERCISE_EXAMPLE), 1227775554);
+    }
 
-        dial.move_steps(1000);
-
-        assert_eq!(dial.clicks_on_zero, 10);
-        assert_eq!(dial.cursor, 50);
+    #[test]
+    fn digit_count_test() {
+        // Para probar a ver si así puedo obtener la cantidad de dígitos
+        assert_eq!((1 as usize).ilog10() + 1, 1);
+        assert_eq!((3 as usize).ilog10() + 1, 1);
+        assert_eq!((12 as usize).ilog10() + 1, 2);
+        assert_eq!((131 as usize).ilog10() + 1, 3);
     }
 }
